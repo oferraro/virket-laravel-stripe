@@ -7,41 +7,76 @@ use Illuminate\Http\Request;
 class StripeController extends Controller
 {
 
-    public function step1() {
+    public function __construct() {
         \Stripe\Stripe::setApiKey(env('STRIPE_API_KEY'));
+    }
 
-        $setup_intent = \Stripe\SetupIntent::create([
-            'usage' => 'on_session'
+    public function step1(Request $request) {
+
+        $paymentMethod = \Stripe\PaymentMethod::retrieve($request->get('cardToken')['id']);
+
+        $intent = \Stripe\PaymentIntent::create([
+            'amount' => 1099,
+            'currency' => 'usd',
+            'payment_method_types' => ['card'],
+            'statement_descriptor' => 'Custom descriptor',
+            'metadata' => [
+                'integration_check' => 'accept_a_payment'
+            ]
         ]);
 
         $userStripeCustomer = \Stripe\Customer::create([
             'email' => 'test@email.com',
             'name' => 'test',
         ]);
-
-        $paymentMethod = \Stripe\PaymentMethod::create([
-            'type' => 'card',
-            'card' => [
-                'number' => '4242424242424242',
-                'exp_month' => 4,
-                'exp_year' => 2021,
-                'cvc' => '314',
-            ],
+        $userStripeCustomer = \Stripe\Customer::update($userStripeCustomer->id, [
+            'source' => $request->get('cardToken')['id'],
         ]);
 
-        $intent = \Stripe\PaymentIntent::create([
-            'payment_method' => $paymentMethod,
-            'amount' => 350,
+
+        /*$userStripeCustomer = \Stripe\Customer::update($userStripeCustomer->id, [
+            'invoice_settings' => [
+                'default_payment_method' => $paymentMethod
+            ]
+        ]);*/
+
+        $charge = \Stripe\Charge::create([
+            'amount' => 1099,
             'currency' => 'eur',
-            'confirmation_method' => 'manual',
-            'confirm' => true,
             'customer' => $userStripeCustomer->id,
+            //'source' => $paymentMethod->id,
         ]);
+
 
         return response()->json([
-            'data' => $userStripeCustomer,
-            'intent' => $intent], 200
-        ); //Make sure your response is there
+            'paymentMethod' => $paymentMethod,
+            'userStripeCustomer' => $userStripeCustomer,
+            'intent' => $intent,
+            'charge' => $charge,
+            'cardToken' => $request->get('cardToken'),
+        ], 200); //Make sure your response is there
 
     }
+
+    public function step2(Request $request) {
+        // 'cardToken' => $request->get('cardToken')['id'],
+        // $order->pay(['source' => $request->get('cardToken')]);
+        return response()->json([
+            'requestAll' => $request->all(),
+        ]);
+    }
+
+    /* DEMO, use path integrating with frontend from here */
+    public function demoStep1(Request $request) {
+        $intent = \Stripe\PaymentIntent::create([
+            'amount' => $request->get('price'),
+            'currency' => 'usd',
+            // Verify your integration in this guide by including this parameter
+            'metadata' => ['integration_check' => 'accept_a_payment'],
+        ]);
+        return response()->json([
+            'intent' => $intent,
+        ]);
+    }
+
 }
