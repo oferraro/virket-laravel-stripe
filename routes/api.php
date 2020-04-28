@@ -33,4 +33,5 @@ Route::middleware(['cors'])->group(function () {
         ->name('mercadopago.customer.search');
 
 
+    Route::post('/mercadopago/oxxo/pay', 'MercadoPagoController@oxxoPay')->name('mercadopago.oxxo.pay');
 });

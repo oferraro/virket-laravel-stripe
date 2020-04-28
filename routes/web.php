@@ -18,3 +18,10 @@ Route::get('/', function () {
 });
 
 
+// http://localhost:8000/mercadopago/acreditar-ticket/25060910
+Route::get('mercadopago/acreditar-ticket/{id}', 'MercadoPagoController@updateOxxoPayment')
+    ->name('mercadopago.ticket.pay');
+
+// http://localhost:8000/mercadopago/ticket/25060910
+Route::get('mercadopago/ticket/{id}', 'MercadoPagoController@oxxoGetPayment')
+    ->name('mercadopago.ticket.get');

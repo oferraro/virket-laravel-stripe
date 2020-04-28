@@ -11,7 +11,8 @@ class MercadoPagoController extends Controller
     public $mpAccessToken = '';
 
     public function __construct() {
-        $this->mpAccessToken = env("MERCADO_PAGO_ENV_ACCESS");
+        // $this->mpAccessToken = env("MERCADO_PAGO_ENV_ACCESS");
+        $this->mpAccessToken = env("MERCADO_PAGO_ENV_ACCESS_MX");
         MercadoPago\SDK::setAccessToken($this->mpAccessToken);
     }
 
@@ -57,6 +58,11 @@ class MercadoPagoController extends Controller
             $card = $this->setOrUpdateCustomerCard($paymentToken, $customer);
             $cardAttributes = $card->getAttributes();
             $cardAttributesPayMethod = $cardAttributes['payment_method'];
+            if (isset($cardAttributes['error'])) {
+                return response()->json([
+                    'error' => $cardAttributes['error'],
+                ]); // FINISH HERE, error
+            }
             $cardPaymentMethodId = $cardAttributesPayMethod->id;
             $cardIssuerAttributes = $cardAttributes['issuer'];
             $cardIssuerId = $cardIssuerAttributes->id;
@@ -77,8 +83,6 @@ class MercadoPagoController extends Controller
             "email" => $customer->email // TODO: use more customer info here? add orderID?
         ];
         $payment->save();
-
-        error_log(print_r($payment->error, 1), 3, '/tmp/log');
 
         return response()->json([
             'customer' => $customer,
@@ -135,6 +139,49 @@ class MercadoPagoController extends Controller
             'customer' => (($customer) ? $customer->toArray() : []),
             'cards' => $customerCards
         ]);
+    }
+
+
+    public function oxxoPay (Request $request) {
+        $paymentMethods = $this->getPaymentMethods();
+        foreach($paymentMethods as $paymentMethod) { // Just to know the proper oxxo name
+            if (strstr(strtolower($paymentMethod['name']), 'oxxo')) {
+                error_log(print_r($paymentMethod, 1), 3, '/tmp/log');
+            }
+        }
+
+        $payment = new MercadoPago\Payment();
+        $payment->transaction_amount = 100;
+        $payment->description = "Título del producto";
+        $payment->payment_method_id = "oxxo";
+        $payment->payer = [
+            "email" => time()."@testuser.com"
+        ];
+        $payment->save();
+
+        return response()->json([
+            'payment' => $payment->toArray(),
+            'request' => $request->all()
+        ]);
+    }
+
+    private function getPaymentMethods() {
+        $url = "https://api.mercadopago.com/v1/payment_methods?access_token=".$this->mpAccessToken;
+        return Http::get($url)->json();;
+    }
+
+    public function oxxoGetPayment($ticketId) {
+        $url = "https://api.mercadopago.com/v1/payments/$ticketId?access_token=".$this->mpAccessToken;
+        $response = Http::get($url)->json();
+        dd($response);
+    }
+
+    public function updateOxxoPayment($ticketId) { // $ticketId = "25060486";
+        $url = "https://api.mercadopago.com/v1/payments/$ticketId?access_token=".$this->mpAccessToken;
+        $response = Http::put($url, [
+            'status' => "approved"
+        ])->json();
+        dd($response);
     }
 
 }
