@@ -8,10 +8,16 @@ use Illuminate\Support\Facades\Http;
 
 class MercadoPagoController extends Controller
 {
+    public $mpAccessToken = '';
+
+    public function __construct() {
+        $this->mpAccessToken = env("MERCADO_PAGO_ENV_ACCESS");
+        MercadoPago\SDK::setAccessToken($this->mpAccessToken);
+    }
 
     private function getOrCreateCustomer($formData) {
         $filters = [
-            "email" => $formData['email']
+            "email" => strtolower($formData['email'])
         ];
         $customers = MercadoPago\Customer::search($filters);
         if(isset($customers[0])) {
@@ -33,18 +39,27 @@ class MercadoPagoController extends Controller
     }
 
     public function pay(Request $request) {
-        $mpAccessToken = env("MERCADO_PAGO_ENV_ACCESS");
-        MercadoPago\SDK::setAccessToken($mpAccessToken);               // Set MercadoPago keys
         $formData = $request->get('formData');
         // Use the payment Token
         $paymentToken = $request->get('MercadopagoPaymentId');
         // Get or create customer and customer card
         $customer = $this->getOrCreateCustomer($formData);
-        $card = $this->setOrUpdateCustomerCard($paymentToken, $customer);
-        // get card attributes
-        $cardAttributes = $card->getAttributes();
-        $cardIssuerAttributes = $cardAttributes['issuer'];
-        $cardAttributesPayMethod = $cardAttributes['payment_method'];
+        // Check if user has cards
+        if (isset($customer->cards[0])) { // TODO: manage multiple cards, not only one
+            $customerCardsUrl = "https://api.mercadopago.com/v1/customers/".$customer->id."?access_token=".$this->mpAccessToken;
+            $customerCards = json_decode(Http::get($customerCardsUrl)->body());
+            $cardAttributes = $customerCards->cards[0];
+            $cardPaymentMethodId = $cardAttributes->id;
+            $cardIssuerId = $cardAttributes->issuer->id;
+        } else {
+            $card = $this->setOrUpdateCustomerCard($paymentToken, $customer);
+            $cardAttributes = $card->getAttributes();
+            $cardAttributesPayMethod = $cardAttributes['payment_method'];
+            $cardPaymentMethodId = $cardAttributesPayMethod->id;
+            $cardIssuerAttributes = $cardAttributes['issuer'];
+            $cardIssuerId = $cardIssuerAttributes->id;
+        }
+
         // Use the datat to create the payment
         $payment = new MercadoPago\Payment();
         $payment->metadata = [
@@ -54,14 +69,15 @@ class MercadoPagoController extends Controller
         $payment->token = $paymentToken;
         $payment->description = "Ergonomic Paper Plate"; // TODO: Add the proper description here
         $payment->installments = 1; // TODO: Ask installments (cuotas) in frontend? use the API? use always just 1?
-        $payment->payment_method_id = $cardAttributesPayMethod->id;
-        $payment->issuer_id = $cardIssuerAttributes->id; // card issuer
+        $payment->payment_method_id = $cardPaymentMethodId;
+        $payment->issuer_id = $cardIssuerId;  // card issuer
         $payment->payer = [
             "email" => $customer->email // TODO: use more customer info here? add orderID?
         ];
         $payment->save();
 
         return response()->json([
+            'customer' => $customer,
             'MercadopagoPaymentId' => $paymentToken,
             'status' => $payment->status,
             'payment' =>  $payment,
@@ -70,8 +86,6 @@ class MercadoPagoController extends Controller
     }
 
     public function paymentsGet() {
-        $mpAccessToken = env("MERCADO_PAGO_ENV_ACCESS");
-        MercadoPago\SDK::setAccessToken($mpAccessToken);
 
         /*  MercadoPago api doesn't work (use Guzzle)
             $payments = MercadoPago\SDK::get(
@@ -98,14 +112,27 @@ class MercadoPagoController extends Controller
         foreach ($params as $k => $v) {
             $getParams.="&$k=$v";
         }
-        $url = "https://api.mercadopago.com/v1/payments/search?access_token=$mpAccessToken&$getParams";
-        error_log(print_r($url, 1), 3, '/tmp/log');
+        $url = "https://api.mercadopago.com/v1/payments/search?access_token=".$this->mpAccessToken."&$getParams";
         $response = Http::get($url)->json();
 
         return response()->json([
             'payments' => $response,
         ]);
     }
+
+    public function customerSearch(Request $request) {
+        $customer = $this->getOrCreateCustomer([
+            'email' => $request->get('customer')['email']
+        ]);
+
+        $customerCardsUrl = "https://api.mercadopago.com/v1/customers/".$customer->id."?access_token=".$this->mpAccessToken;
+        $customerCards = Http::get($customerCardsUrl)->json();
+        return response()->json([
+            'customer' => (($customer) ? $customer->toArray() : []),
+            'cards' => $customerCards
+        ]);
+    }
+
 }
 
 /*

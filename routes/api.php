@@ -27,6 +27,10 @@ Route::middleware(['cors'])->group(function () {
     Route::post('/stripe/demo/step1', 'StripeController@demoStep1')->name('stripe.pay.demo.step1');
 
     Route::post('/mercadopago/pay', 'MercadoPagoController@pay')->name('mercadopago.pay');
-    Route::post('/mercadopago/payments/get', 'MercadoPagoController@paymentsGet')->name('mercadopago.payments.get');
+    Route::post('/mercadopago/payments/get', 'MercadoPagoController@paymentsGet')
+        ->name('mercadopago.payments.get');
+    Route::post('/mercadopago/customer/search', 'MercadoPagoController@customerSearch')
+        ->name('mercadopago.customer.search');
+
 
 });
