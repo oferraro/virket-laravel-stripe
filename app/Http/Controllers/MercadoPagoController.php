@@ -46,12 +46,14 @@ class MercadoPagoController extends Controller
         $customer = $this->getOrCreateCustomer($formData);
         // Check if user has cards
         if (isset($customer->cards[0])) { // TODO: manage multiple cards, not only one
+            // User has at least one card, use the first one
             $customerCardsUrl = "https://api.mercadopago.com/v1/customers/".$customer->id."?access_token=".$this->mpAccessToken;
             $customerCards = json_decode(Http::get($customerCardsUrl)->body());
             $cardAttributes = $customerCards->cards[0];
-            $cardPaymentMethodId = $cardAttributes->id;
-            $cardIssuerId = $cardAttributes->issuer->id;
+            $cardPaymentMethodId = $cardAttributes->payment_method->id; // user name i.e. master
+            $cardIssuerId = $cardAttributes->issuer->id; // Use card issuer ID here i.e. 3
         } else {
+            // Customer has no cards (create new card)
             $card = $this->setOrUpdateCustomerCard($paymentToken, $customer);
             $cardAttributes = $card->getAttributes();
             $cardAttributesPayMethod = $cardAttributes['payment_method'];
@@ -75,6 +77,8 @@ class MercadoPagoController extends Controller
             "email" => $customer->email // TODO: use more customer info here? add orderID?
         ];
         $payment->save();
+
+        error_log(print_r($payment->error, 1), 3, '/tmp/log');
 
         return response()->json([
             'customer' => $customer,
